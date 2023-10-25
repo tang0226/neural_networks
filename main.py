@@ -1,6 +1,7 @@
 import math
 import random
 import csv
+import json
 
 def sigmoid(x):
     return 1 / (1 + math.exp(-x))
@@ -8,70 +9,6 @@ def sigmoid(x):
 def dsigmoid(x):
     s = sigmoid(x)
     return s * (1 - s)
-
-def add_weight_arrays(w1, w2):
-    r = []
-    for i in range(len(w1)):
-        a1 = []
-        for j in range(len(w1[i])):
-            a2 = []
-            for k in range(len(w1[i][j])):
-                a2.append(w1[i][j][k] + w2[i][j][k])
-            a1.append(a2)
-        r.append(a1)
-    return r
-
-def add_bias_arrays(b1, b2):
-    r = []
-    for i in range(len(b1)):
-        a = []
-        for j in range(len(b1[i])):
-            a.append(b1[i][j] + b2[i][j])
-        r.append(a)
-    return r
-
-def neg_weight_array(w):
-    r = []
-    for i in range(len(w)):
-        a1 = []
-        for j in range(len(w[i])):
-            a2 = []
-            for k in range(len(w[i][j])):
-                a2.append(-w[i][j][k])
-            a1.append(a2)
-        r.append(a1)
-    return r
-
-def neg_bias_array(b):
-    r = []
-    for i in range(len(b)):
-        a = []
-        for j in range(len(b[i])):
-            a.append(-b[i][j])
-        r.append(a)
-    return r
-
-def mul_weight_array(w, m):
-    r = []
-    for i in range(len(w)):
-        a1 = []
-        for j in range(len(w[i])):
-            a2 = []
-            for k in range(len(w[i][j])):
-                a2.append(w[i][j][k] * m)
-            a1.append(a2)
-        r.append(a1)
-    return r
-
-
-def mul_bias_array(b, m):
-    r = []
-    for i in range(len(b)):
-        a = []
-        for j in range(len(b[i])):
-            a.append(b[i][j] * m)
-        r.append(a)
-    return r
 
 
 class NeuralNetwork:
@@ -110,6 +47,50 @@ class NeuralNetwork:
             ]
             for i in range(1, self.layer_count)
         ]
+
+    def add_weight_arrays(self, w1, w2):
+        r = []
+        for i in range(len(w1)):
+            a1 = []
+            for j in range(len(w1[i])):
+                a2 = []
+                for k in range(len(w1[i][j])):
+                    a2.append(w1[i][j][k] + w2[i][j][k])
+                a1.append(a2)
+            r.append(a1)
+        return r
+
+    def add_bias_arrays(self, b1, b2):
+        r = []
+        for i in range(len(b1)):
+            a = []
+            for j in range(len(b1[i])):
+                a.append(b1[i][j] + b2[i][j])
+            r.append(a)
+        return r
+    
+    def mul_weight_array(self, w, m):
+        r = []
+        for i in range(len(w)):
+            a1 = []
+            for j in range(len(w[i])):
+                a2 = []
+                for k in range(len(w[i][j])):
+                    a2.append(w[i][j][k] * m)
+                a1.append(a2)
+            r.append(a1)
+        return r
+
+
+    def mul_bias_array(self, b, m):
+        r = []
+        for i in range(len(b)):
+            a = []
+            for j in range(len(b[i])):
+                a.append(b[i][j] * m)
+            r.append(a)
+        return r
+
     
     def init_neurons(self):
 
@@ -141,7 +122,6 @@ class NeuralNetwork:
         self.costs = []
     
     def process(self, input_activations, compare):
-
         # Init activations array (for all neurons)
         self.activations = [input_activations] + list([] for i in range(self.layer_count - 1))
         self.z = [[]] + list([] for i in range(self.layer_count - 1))
@@ -150,6 +130,7 @@ class NeuralNetwork:
         # 1 for first hidden layer
         for layer in range(1, self.layer_count):
             for i in range(self.layer_sizes[layer]):
+                #print(self.activations)
                 z = sum(
                         self.activations[layer - 1][j] * self.weights[layer][i][j]
                         for j in range(self.layer_sizes[layer - 1])
@@ -161,6 +142,7 @@ class NeuralNetwork:
         
         # Get costs
         self.costs = [0.5 * (compare[i] - output_layer[i]) ** 2 for i in range(len(output_layer))]
+        self.total_cost = sum(self.costs)
 
 
     # The calculus part
@@ -213,8 +195,8 @@ class NeuralNetwork:
         }
 
     def apply_changes(self, weight_changes, bias_changes):
-        self.weights = add_weight_arrays(self.weights, weight_changes)
-        self.biases = add_bias_arrays(self.biases, bias_changes)
+        self.weights = self.add_weight_arrays(self.weights, weight_changes)
+        self.biases = self.add_bias_arrays(self.biases, bias_changes)
     
     def run_epoch(self, inputs, corrects, batch_size):
         length = len(inputs)
@@ -226,13 +208,16 @@ class NeuralNetwork:
             total_bias_nudges = self.get_empty_bias_arrays()
             total_weight_nudges = self.get_empty_weight_arrays()
             
+            total_cost = 0
+            
             for k in range(batch_size):
                 input = inputs[i]
                 correct = corrects[i]
                 self.process(input, correct)
+                total_cost += self.total_cost
                 nudges = self.get_derivatives(correct)
-                total_bias_nudges = add_bias_arrays(total_bias_nudges, nudges["bias"])
-                total_weight_nudges = add_weight_arrays(total_weight_nudges, nudges["weight"])
+                total_bias_nudges = self.add_bias_arrays(total_bias_nudges, nudges["bias"])
+                total_weight_nudges = self.add_weight_arrays(total_weight_nudges, nudges["weight"])
                 i += 1
 
             # take average of all nudges returned from the batch
@@ -244,10 +229,13 @@ class NeuralNetwork:
             
             # Apply
             self.apply_changes(
-                mul_weight_array(total_weight_nudges, -self.alpha / batch_size),
-                mul_bias_array(total_bias_nudges, -self.alpha / batch_size)
+                self.mul_weight_array(total_weight_nudges, -self.alpha / batch_size),
+                self.mul_bias_array(total_bias_nudges, -self.alpha / batch_size)
             )
-            print("Batch", j, "done")
+            #print(self.mul_bias_array(total_bias_nudges, -self.alpha / batch_size))
+            print(" Batch", j, "done")
+            l = total_cost / batch_size
+            print(" ", "Avg. loss:", l)
     
     def test_accuracy(self, inputs, corrects):
         total_correct = 0
@@ -281,36 +269,44 @@ def format_data_as_input(data):
     return [inputs, corrects]
 
 # init data
+print("\nInitializing training and testing data...")
 with open("train.csv") as csvfile:
     read = csv.reader(csvfile, delimiter=",")
     data = list(read)[1:]
 
+for i in range(len(data)):
+    to_set = [list(int(j) / 255 for j in data[i][1:]), list(0 for j in range(10))]
+    to_set[1][int(data[i][0])] = 1
+    data[i] = to_set
 
-"""#network = NeuralNetwork(784, [16, 16], 10, 3, 3, 1)
-network = NeuralNetwork(2, [2], 2, 1, 1, 0.7)
-network.weights = [[], [[0.1, 0.3], [0.2, 0.4]], [[0.5, 0.6], [0.7, 0.8]]]
-network.biases = [[], [0.25, 0.25], [0.35, 0.35]]
-input = [0.1, 0.5]
-correct = [0.05, 0.95]
-network.process(input, correct)
-print(network.activations)
+
+"""network = NeuralNetwork(2, [10, 20], 2, 1, 1, 0.1)
+input = [0.42, 0.5]
+correct = [0.85, 0.95]
+for i in range(10):
+    network.process(input, correct)
+    print(network.activations[-1], network.total_cost)
+    d = network.get_derivatives(correct)
+    network.apply_changes(
+        mul_weight_array(d["weight"], -network.alpha),
+        mul_bias_array(d["bias"], -network.alpha)
+    )
+
 d = network.get_derivatives(correct)
-network.apply_changes(
-    mul_weight_array(d["weight"], -network.alpha),
-    mul_bias_array(d["bias"], -network.alpha)
-)
-network.process(input, correct)
-print()
-print(network.activations)"""
+print(d["bias"])
+print(add_bias_arrays(d["bias"], network.get_empty_bias_arrays()))"""
+
+
 #data = format_data_as_input(data)
 
 
 # simulate one epoch:
 
-"""index = 0
+index = 0
+
 # Fix this data!!!
 
-test = [list(float(int(i) / 255) for i in data[0][1:]), []]
+"""test = [list(float(int(i) / 255) for i in data[0][1:]), []]
 test[1] = list(0 for i in range(10))
 test[1][int(data[0][0])] = 1
 network.process(test[0], test[1])
@@ -327,17 +323,54 @@ print(network.activations[-1])
 print(test[1])
 print(list(after[i] - before[i] for i in range(len(after))))"""
 
-"""training_data = [data[0][ : 10000], data[1][ : 10000]]
-test_data = [data[0][-10000 : ], data[1][-10000 : ]]
 
-print(network.test_accuracy(test_data[0], test_data[1]))
+training_data = [
+    list(data[i][0] for i in range(36000)),
+    list(data[i][1] for i in range(36000))
+]
+test_data = [
+    list(data[i][0] for i in range(-6000, 0)),
+    list(data[i][1] for i in range(-6000, 0))
+]
 
-network.run_epoch(training_data[0], training_data[1], 1000)
 
 
-print(network.test_accuracy(test_data[0], test_data[1]))"""
+# last time: ended around 0.47 avg loss, 15.7% accuracy
+"""
+for i in range(2, 20):
+    network.alpha = 2 / i ** 1.3
+    print("Starting epoch with learning rate", round(network.alpha, 4))
+    network.run_epoch(training_data[0], training_data[1], 1000)
+    print("Accuracy:", network.test_accuracy(test_data[0], test_data[1]))
+"""
 
+network = NeuralNetwork(784, [16, 16], 10, 1, 1, 0.05)
 
+# to continue training from pre-trained network
+print("Retrieving neural network state...")
+with open("network_data.json", "r") as fp:
+    data = json.load(fp)
+    network.weights = data["weights"]
+    network.biases = data["biases"]
+    network.alpha = data["alpha"]
+
+print("Starting...\n")
+
+# Last run: ended around 0.41 avg loss, 33.73% accuracy, consistent improvement of
+# ~0.5% accuracy rate improvement per epoch
+last_accuracy = network.test_accuracy(test_data[0], test_data[1])
+print("Initial accuracy:", round(last_accuracy, 5))
+
+network.alpha = 0.03
+
+while True:
+    print("Starting epoch with learning rate", round(network.alpha, 4))
+    network.run_epoch(training_data[0], training_data[1], 1000)
+    a = network.test_accuracy(test_data[0], test_data[1])
+    print("Accuracy:", round(a, 5), "|", "Improvement:", round(a - last_accuracy, 5))
+    last_accuracy = a
+    with open("network_data.json", "w") as jsonFile:
+        json.dump(network.__dict__, jsonFile)
 
 """
 
