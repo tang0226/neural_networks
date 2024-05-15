@@ -1,5 +1,5 @@
 from math import exp
-from random import random, randint
+from random import random, randint, shuffle
 import numpy as np
 import csv
 import json
@@ -81,8 +81,6 @@ class DenselyConnectedNeuralNetwork:
       for i in range(self.layer_sizes[-1])
     ]
     dz = [[] for i in range(self.layer_count - 1)] + [ll_dz]
-    
-    db = [[] for i in range(self.layer_count - 1)] + [ll_dz]
 
     ll_dw = [
       [
@@ -117,14 +115,10 @@ class DenselyConnectedNeuralNetwork:
       ]
       dw[layer] = l_dw
 
-      db[layer] = l_dz
-
     
     return {
-      "z": dz,
-      "a": da,
       "w": dw,
-      "b": db,
+      "b": dz, # dz/db = 1, dC/db = dC/dz * dz/db = dC/dz, so dC/db = dC/dz
     }
 
 
@@ -212,13 +206,28 @@ for i in range(len(data)):
   to_set[1][int(data[i][0])] = 1
   data[i] = to_set
 
-training_data = data[:30000]
-test_data = data[-6000:]
 
+
+# Configuration:
 
 net = DenselyConnectedNeuralNetwork([784, 30, 10], sig, d_sig)
 
 restart = False
+
+alpha = 0.1
+epoch_length = 1000
+batch_size = 32
+batch_print_interval = 100
+
+training_data_count = 32000
+testing_data_count = 8400
+
+
+
+training_data_temp = data[:training_data_count]
+training_data = list([i[0].copy(), i[1].copy()] for i in training_data_temp)
+
+testing_data = data[-testing_data_count:]
 
 if restart:
   # Get fresh random state
@@ -232,22 +241,30 @@ else:
     net.b = data["b"]
     net.epochs = data["epochs"]
 
+print()
 
-epoch_length = 10
-batch_size = 3000
 
-alpha = 0.1
 
 epoch = net.epochs + 1
 
 while True:
-  print("Starting epoch", str(epoch) + "...")
+  print("Starting epoch", str(epoch) + ",", "LR =", str(alpha) + "...")
+
+  shuffle(training_data)
+
   data_index = 0
+  epoch_cost_running_total = 0
+  epoch_total_correct = 0
+
   for i in range(epoch_length):
-    cost_running_total = 0
-    total_correct = 0
+    print_batch = (i + 1) % batch_print_interval == 0
+
+    if print_batch:
+      batch_cost_running_total = 0
+    
     weight_nudges_total = net.get_zero_weight_array()
     bias_nudges_total = net.get_zero_bias_array()
+
     for j in range(batch_size):
       inputs = training_data[data_index][0]
       expected = training_data[data_index][1]
@@ -258,10 +275,14 @@ while True:
       answer = [0] * 10
       answer[ll_a.index(max(ll_a))] = 1
       if answer == expected:
-        total_correct += 1
+        epoch_total_correct += 1
 
       cost = net.get_cost(expected)
-      cost_running_total += cost
+
+      if print_batch:
+        batch_cost_running_total += cost
+      
+      epoch_cost_running_total += cost
 
       grad = net.calculate_gradient(expected)
       
@@ -279,11 +300,40 @@ while True:
     net.w = net.add_weight_arrays(net.w, weight_nudges_total)
     net.b = net.add_bias_arrays(net.b, bias_nudges_total)
 
-    print(
-      str(i + 1) + ".", total_correct, "/", batch_size, ",",
-      round(total_correct / batch_size, 4),
-      "|", "Avg. cost", cost_running_total / batch_size
-    )
+    if print_batch:
+      print(" Batch", str(i + 1) + ":", "Avg. cost", batch_cost_running_total / batch_size)
+  
+
+  # validation
+  num_correct = 0
+  total_cost = 0
+  for data in testing_data:
+    inputs = data[0]
+    expected = data[1]
+
+    net.feed_forward(inputs)
+
+    ll_a = net.a[-1]
+    answer = [0] * 10
+    answer[ll_a.index(max(ll_a))] = 1
+    if answer == expected:
+      num_correct += 1
+    total_cost += net.get_cost(expected)
+
+  print("Epoch", epoch, "done")
+  print(
+    " Cost:", round(epoch_cost_running_total / (batch_size * epoch_length), 5),
+    "(" + str(round(total_cost / testing_data_count, 5)) + ")"
+  )
+  print(
+    " Accuracy:",
+    str(epoch_total_correct) + "/" + str(batch_size * epoch_length),
+    "(" + str(num_correct) + "/" + str(testing_data_count) + ")" + ",",
+
+    round(epoch_total_correct / (batch_size * epoch_length), 5),
+    "(" + str(round(num_correct / testing_data_count, 5)) + ")"
+  )
+  print()
   epoch += 1
   net.epochs += 1
 
