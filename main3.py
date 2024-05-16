@@ -50,14 +50,15 @@ class DenselyConnectedNeuralNetwork:
     self.accuracy_over_time = []
   
 
-  def init_weights_and_biases(self, w_range, b_range):
+  def init_weights_and_biases(self, b_range):
     self.w = [
-      np.random.rand(self.layer_sizes[i], self.layer_sizes[i - 1]) * (w_range * random() - 1)
+      # use Xavier method
+      (np.random.rand(self.layer_sizes[i], self.layer_sizes[i - 1]) * 2 - 1) / (self.layer_sizes[i - 1] ** 0.5)
       for i in range(1, self.layer_count)
     ]
 
     self.b = [
-      np.random.rand(self.layer_sizes[i]) * (b_range * random() - 1)
+      (np.random.rand(self.layer_sizes[i]) * 2 - 1) * b_range
       for i in range(1, self.layer_count)
     ]
   
@@ -164,7 +165,7 @@ net = DenselyConnectedNeuralNetwork([784, 16, 16, 10], sig, d_sig)
 
 restart = True
 
-alpha = 0.5
+alpha = 0.1
 epoch_length = 1000
 batch_size = 32
 print_batches = True
@@ -182,7 +183,7 @@ testing_data = data[-testing_data_count:]
 
 if restart:
   # Get fresh random state
-  net.init_weights_and_biases(2, 2)
+  net.init_weights_and_biases(0)
 else:
   # Import state from JSON storage
   print("Retrieving neural network state...")
@@ -199,7 +200,7 @@ print()
 epoch = net.epochs + 1
 
 while True:
-  for e in range(1):
+  for e in range(5):
     print("Starting epoch", str(epoch) + ",", "LR =", str(alpha) + "...")
 
     shuffle(training_data)
