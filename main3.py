@@ -3,6 +3,7 @@ from random import random, randint, shuffle
 import numpy as np
 import csv
 import json
+import matplotlib.pyplot as plt
 
 
 # activation functions, must be matrix-compatible
@@ -45,6 +46,8 @@ class DenselyConnectedNeuralNetwork:
     self.b = []
 
     self.epochs = 0
+    self.cost_over_time = []
+    self.accuracy_over_time = []
   
 
   def init_weights_and_biases(self, w_range, b_range):
@@ -157,13 +160,14 @@ for i in range(len(data)):
 
 # Configuration:
 
-net = DenselyConnectedNeuralNetwork([784, 30, 10], sig, d_sig)
+net = DenselyConnectedNeuralNetwork([784, 16, 16, 10], sig, d_sig)
 
 restart = True
 
-alpha = 0.3
+alpha = 0.5
 epoch_length = 1000
 batch_size = 32
+print_batches = True
 batch_print_interval = 100
 
 training_data_count = 32000
@@ -184,111 +188,123 @@ else:
   print("Retrieving neural network state...")
   with open("network_data.json", "r") as fp:
     data = json.load(fp)
-    net.w = data["w"]
-    net.b = data["b"]
+    net.w = [np.array(i) for i in data["w"]]
+    net.b = [np.array(i) for i in data["b"]]
     net.epochs = data["epochs"]
+    net.accuracy_over_time = data["accuracy_over_time"]
+    net.cost_over_time = data["cost_over_time"]
 
 print()
-
-
 
 epoch = net.epochs + 1
 
 while True:
-  print("Starting epoch", str(epoch) + ",", "LR =", str(alpha) + "...")
+  for e in range(1):
+    print("Starting epoch", str(epoch) + ",", "LR =", str(alpha) + "...")
 
-  shuffle(training_data)
+    shuffle(training_data)
 
-  data_index = 0
-  epoch_cost_running_total = 0
-  epoch_total_correct = 0
+    data_index = 0
+    epoch_cost_running_total = 0
+    epoch_total_correct = 0
 
-  for i in range(epoch_length):
-    print_batch = (i + 1) % batch_print_interval == 0
+    for i in range(epoch_length):
+      print_batch = print_batches and (i + 1) % batch_print_interval == 0
 
-    if print_batch:
-      batch_cost_running_total = 0
+      if print_batch:
+        batch_cost_running_total = 0
+      
+      weight_nudges_total = net.get_zero_weight_array()
+      bias_nudges_total = net.get_zero_bias_array()
+
+      for j in range(batch_size):
+        inputs = np.array(training_data[data_index][0])
+        expected = np.array(training_data[data_index][1])
+
+        net.feed_forward(inputs)
+
+        ll_a = list(net.a[-1])
+        answer = [0] * 10
+        answer[list(ll_a).index(max(list(ll_a)))] = 1
+        if answer == list(expected):
+          epoch_total_correct += 1
+
+        cost = net.get_cost(expected)
+
+        if print_batch:
+          batch_cost_running_total += cost
+        
+        epoch_cost_running_total += cost
+
+        grad = net.calculate_gradient(expected)
+        
+        dw = grad["w"]
+        db = grad["b"]
+
+        weight_nudges_total = add_arr(weight_nudges_total, dw)
+        bias_nudges_total = add_arr(bias_nudges_total, db)
+
+        data_index += 1
+      
+      weight_nudges_total = mul_arr(weight_nudges_total, -alpha / batch_size)
+      bias_nudges_total = mul_arr(bias_nudges_total, -alpha / batch_size)
+
+      net.w = add_arr(net.w, weight_nudges_total)
+      net.b = add_arr(net.b, bias_nudges_total)
+
+      if print_batch:
+        print(" Batch", str(i + 1) + ":", "Avg. cost", batch_cost_running_total / batch_size)
     
-    weight_nudges_total = net.get_zero_weight_array()
-    bias_nudges_total = net.get_zero_bias_array()
 
-    for j in range(batch_size):
-      inputs = np.array(training_data[data_index][0])
-      expected = np.array(training_data[data_index][1])
+    # validation
+    num_correct = 0
+    total_cost = 0
+    for data in testing_data:
+      inputs = np.array(data[0])
+      expected = data[1]
 
       net.feed_forward(inputs)
 
       ll_a = list(net.a[-1])
       answer = [0] * 10
       answer[list(ll_a).index(max(list(ll_a)))] = 1
-      if answer == list(expected):
-        epoch_total_correct += 1
+      if answer == expected:
+        num_correct += 1
+      total_cost += net.get_cost(expected)
 
-      cost = net.get_cost(expected)
+    print("Epoch", epoch, "done")
+    print(
+      " Cost:", round(epoch_cost_running_total / (batch_size * epoch_length), 5),
+      "(" + str(round(total_cost / testing_data_count, 5)) + ")"
+    )
+    print(
+      " Accuracy:",
+      str(epoch_total_correct) + "/" + str(batch_size * epoch_length),
+      "(" + str(num_correct) + "/" + str(testing_data_count) + ")" + ",",
 
-      if print_batch:
-        batch_cost_running_total += cost
-      
-      epoch_cost_running_total += cost
+      round(epoch_total_correct / (batch_size * epoch_length), 5),
+      "(" + str(round(num_correct / testing_data_count, 5)) + ")"
+    )
+    print()
+    net.cost_over_time.append(total_cost / testing_data_count)
+    net.accuracy_over_time.append(num_correct / testing_data_count)
+    epoch += 1
+    net.epochs += 1
 
-      grad = net.calculate_gradient(expected)
-      
-      dw = grad["w"]
-      db = grad["b"]
+    # Store state after each epoch
+    with open("network_data.json", "w") as jsonFile:
+      d = dict(net.__dict__)
+      del d["activation_func"]
+      del d["activation_func_derivative"]
+      for k in ["z", "a", "w", "b"]:
+        d[k] = [i.tolist() for i in d[k]]
+      json.dump(d, jsonFile)
 
-      weight_nudges_total = add_arr(weight_nudges_total, dw)
-      bias_nudges_total = add_arr(bias_nudges_total, db)
-
-      data_index += 1
-    
-    weight_nudges_total = mul_arr(weight_nudges_total, -alpha / batch_size)
-    bias_nudges_total = mul_arr(bias_nudges_total, -alpha / batch_size)
-
-    net.w = add_arr(net.w, weight_nudges_total)
-    net.b = add_arr(net.b, bias_nudges_total)
-
-    if print_batch:
-      print(" Batch", str(i + 1) + ":", "Avg. cost", batch_cost_running_total / batch_size)
   
-
-  # validation
-  num_correct = 0
-  total_cost = 0
-  for data in testing_data:
-    inputs = np.array(data[0])
-    expected = data[1]
-
-    net.feed_forward(inputs)
-
-    ll_a = list(net.a[-1])
-    answer = [0] * 10
-    answer[list(ll_a).index(max(list(ll_a)))] = 1
-    if answer == expected:
-      num_correct += 1
-    total_cost += net.get_cost(expected)
-
-  print("Epoch", epoch, "done")
-  print(
-    " Cost:", round(epoch_cost_running_total / (batch_size * epoch_length), 5),
-    "(" + str(round(total_cost / testing_data_count, 5)) + ")"
-  )
-  print(
-    " Accuracy:",
-    str(epoch_total_correct) + "/" + str(batch_size * epoch_length),
-    "(" + str(num_correct) + "/" + str(testing_data_count) + ")" + ",",
-
-    round(epoch_total_correct / (batch_size * epoch_length), 5),
-    "(" + str(round(num_correct / testing_data_count, 5)) + ")"
-  )
-  print()
-  epoch += 1
-  net.epochs += 1
-
-  # Store state after each epoch
-  with open("network_data.json", "w") as jsonFile:
-    d = dict(net.__dict__)
-    del d["activation_func"]
-    del d["activation_func_derivative"]
-    for k in ["z", "a", "w", "b"]:
-      d[k] = [i.tolist() for i in d[k]]
-    json.dump(d, jsonFile)
+  plt.plot(list(range(net.epochs)), net.cost_over_time, 'r')
+  plt.plot(list(range(net.epochs)), net.accuracy_over_time, 'b')
+  plt.xlabel('Epochs')
+  plt.ylabel('Avg. Validation Cost')
+  plt.show(block=False)
+  plt.pause(3)
+  plt.close()
